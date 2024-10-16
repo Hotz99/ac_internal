@@ -1,9 +1,8 @@
+use crate::process;
 use crate::ProcMem;
-use crate::util::game_base;
 
 // offset to the Recoil function
 const RECOIL_PATCH_OFF: usize = 0xbd220;
-
 
 pub struct NoRecoilSpread {
     patch_addr: usize,
@@ -12,16 +11,16 @@ pub struct NoRecoilSpread {
 
     // the reason we use procmem here is that memory writes via /proc/mem
     // bypass write protection on executable pages
-    mem: ProcMem
+    mem: ProcMem,
 }
 
 impl NoRecoilSpread {
     pub fn new() -> Self {
         NoRecoilSpread {
-            patch_addr: game_base() + RECOIL_PATCH_OFF,
+            patch_addr: process::target::resolve_base_address().unwrap() + RECOIL_PATCH_OFF,
             enabled: false,
             saved_instr: None,
-            mem: ProcMem::init()
+            mem: ProcMem::init(),
         }
     }
 
@@ -29,15 +28,13 @@ impl NoRecoilSpread {
         println!("recoil addr=0x{:x}", self.patch_addr);
         // nothing to do
         if self.enabled {
-            return
+            return;
         }
 
         // If this is the first time patching, make sure to have saved the instruction before
         // so that we can restore the code
         if !self.saved_instr.is_some() {
-            self.saved_instr = Some({
-                self.mem.read(self.patch_addr)
-            });
+            self.saved_instr = Some(self.mem.read(self.patch_addr));
         }
 
         // patch the instruction with a simple ret
@@ -50,7 +47,7 @@ impl NoRecoilSpread {
     pub fn disable(&mut self) {
         // nothing to do if this patch is already enabled
         if !self.enabled {
-            return
+            return;
         }
 
         // make sure the code can't accidentally disable without having

@@ -3,35 +3,22 @@ use norecoil::NoRecoilSpread;
 
 use crate::player::Player;
 use crate::process::InternalMemory;
-use crate::util::game_base;
-use crate::util::Vec3;
+use crate::utils::Vec3;
+
+use crate::offsets;
+use crate::process;
 
 use std::f32::consts::PI;
 
-// offset from the game's base to a pointer that points at camera1
-const CAMERA1_OFF: usize = 0x1371b0;
-
-// offset to the horizontal angle of the camera
-const YAW_OFF: usize = 0x44;
-
-// offset to the vertical angle of the camera
-const PITCH_OFF: usize = 0x48;
-
-// offset to the IsVisible function of AssaultCube
-const IS_VISIBLE_OFF: usize = 0xda520;
-
-/// Handles AimBot configuration and logic
 pub struct AimBot {
-    /// information about the current player
     player: Player,
 
-    /// no recoild and no spread hook
+    /// no recoil and no spread hook
     pub norecoil_spread: NoRecoilSpread,
 
     /// shoot automatically if an enemy is in the crosshair
     autoshoot: bool,
 
-    /// enables / disables the aimbot
     enabled: bool,
 }
 
@@ -41,9 +28,8 @@ extern "C" {
 }
 
 impl AimBot {
-    /// Creates a new aimbot
-    pub fn new() -> AimBot {
-        let player = Player::local_player();
+    pub fn default() -> AimBot {
+        let player = Player::get_local_player();
         AimBot {
             autoshoot: false,
             player,
@@ -52,19 +38,19 @@ impl AimBot {
         }
     }
 
-    // returns the address of the camera1 object
-    fn camera1() -> usize {
-        InternalMemory::read::<u64>(game_base() + CAMERA1_OFF) as usize
+    fn get_camera1() -> usize {
+        InternalMemory::read::<u64>(
+            process::target::resolve_base_address().unwrap() + offsets::CAMERA1,
+        ) as usize
     }
 
-    // Enables autoshoot
     pub fn enable_autoshoot(&mut self) {
         self.autoshoot = true
     }
 
-    // calculates the position the player will be in the next frame when it moves and returns
-    // the angle we need to set the camera to in order to point at this enemy
-    fn enemy_to_angle(&self, enemy: &Player) -> (f32, f32) {
+    // compute player position for next frame when it moves
+    // returns camera angle to point at this enemy
+    fn get_camera_angle_for_target(&self, enemy: &Player) -> (f32, f32) {
         let target_pos = enemy.get_new_pos();
         let self_pos = self.player.get_new_pos();
         let dx = target_pos.x - self_pos.x;
@@ -80,23 +66,19 @@ impl AimBot {
         (yaw + 90.0, pitch)
     }
 
-    // returns true when an enemy can be shot at
-    // to do this, we call the function "IsVisible" of AssaultCube and
-    // let the game do the math :)
-    // The problem with this function is that it requires C++ calling
-    // conentions. For this reason, there is a trampoline written in C++
-    // that we are calling here
-    fn is_visible(&self, enemy: &Player) -> bool {
+    // calling game's IsVisible() requires c++ trampoline
+    fn is_player_visible(&self, enemy: &Player) -> bool {
         let res = unsafe {
-            let is_visible_addr = game_base() + IS_VISIBLE_OFF;
-            let from = &self.player.get_pos() as *const Vec3;
-            let to = &enemy.get_pos() as *const Vec3;
+            let is_visible_addr =
+                process::target::resolve_base_address().unwrap() + offsets::IS_VISIBLE;
+            let from = &self.player.get_head_position() as *const Vec3;
+            let to = &enemy.get_head_position() as *const Vec3;
             bot_isvisible(is_visible_addr, from, to)
         };
         res == 1
     }
 
-    /// Called after each frame by the main SwapBuffer hook. Handles findings a target
+    /// Called after each frame by the main SwapWindow hook. Handles findings a target
     /// to aim at and updating camera perspective
     pub fn logic(&mut self) {
         // stop shooting if we are not locked onto a target
@@ -110,9 +92,9 @@ impl AimBot {
         }
 
         // obtain a list of all enemies which are alive
-        let players: Vec<Player> = Player::players()
+        let players: Vec<Player> = Player::get_players_vector()
             .into_iter()
-            .filter(|p| p.is_alive() && self.player.enemy_of(p))
+            .filter(|p| p.is_alive() && self.player.are_enemies(p))
             .collect();
 
         // no need to do anything if no enemies are alive
@@ -125,7 +107,7 @@ impl AimBot {
         let mut target = None;
         for p in players.iter() {
             let pdist = self.player.distance_to(p);
-            if pdist < best_dist && self.is_visible(p) {
+            if pdist < best_dist && self.is_player_visible(p) {
                 best_dist = pdist;
                 target = Some(p);
             }
@@ -139,16 +121,16 @@ impl AimBot {
         let target = target.unwrap();
 
         // update the camera position to point at the enemy
-        let (yaw, pitch) = self.enemy_to_angle(target);
+        let (yaw, pitch) = self.get_camera_angle_for_target(target);
 
         // verify camera1 is valid!
-        if Self::camera1() == 0x0 {
+        if Self::get_camera1() == 0x0 {
             return;
         }
 
         // update the camera position
-        InternalMemory::write(Self::camera1() + YAW_OFF, yaw);
-        InternalMemory::write(Self::camera1() + PITCH_OFF, pitch);
+        InternalMemory::write(Self::get_camera1() + offsets::YAW, yaw);
+        InternalMemory::write(Self::get_camera1() + offsets::PITCH, pitch);
 
         // kill something
         if self.autoshoot {
@@ -172,4 +154,3 @@ impl AimBot {
         }
     }
 }
-

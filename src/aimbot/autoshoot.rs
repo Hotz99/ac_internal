@@ -45,7 +45,7 @@ pub struct AutoShoot {
 impl AutoShoot {
     pub fn new(player_base: usize) -> Self {
         AutoShoot {
-            patch_addr: game_base() + CROSSHAIR_OFF,
+            patch_addr: process::target::resolve_base_address().unwrap() + CROSSHAIR_OFF,
             enabled: false,
             mem: ProcMem::init(),
             page: None,

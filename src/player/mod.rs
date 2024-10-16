@@ -2,36 +2,30 @@ mod godmode;
 pub use godmode::GodMode;
 
 mod infiniteammo;
-use crate::util::{game_base, Vec3, ViewMatrix};
+use crate::utils::{Vec3, ViewMatrix};
 use crate::{InternalMemory, ESP};
 pub use infiniteammo::InfiniteAmmo;
 
-/// offset to the player1 pointer from the base of the loaded game
-const PLAYER1_OFF: usize = 0x1a3518;
+use crate::offsets;
+use crate::process;
 
-/// offset to the vector of player pointers from the base of the loaded game
-const PLAYERS_OFF: usize = 0x128330;
-
-// there can be only 32 players in a match
 const MAX_PLAYERS: usize = 32;
 
-/// offset from the player base to the team field (int)
 const TEAM_OFF: usize = 0x344;
 
-/// offset from the player base to the state (alive, dead etc.) a player has (u8)
-const STATE_OFF: usize = 0x86;
+/// alive, dead, etc.
+const PLAYER_STATE_OFF: usize = 0x86;
 
-/// offset to the player position (an array of 3 32bit floats)
 const PLAYER_POS_OFF: usize = 0x8;
 
 const PLAYER_NEWPOS_OFF: usize = 0x38;
-const PLAYER_EYEHEIGHT_OFF: usize = 0x60;
+const PLAYER_EYE_HEIGHT_OFF: usize = 0x60;
 
 const PLAYER_ATTACKING_OFF: usize = 0x23c;
 
-const GAMEMODE_OFF: usize = 0x128294;
+const GAME_MODE_OFF: usize = 0x128294;
 
-// this value represents a living player (used for aimbot / ESP)
+// used for aimbot/ESP
 const ALIVE_STATE: u8 = 0;
 
 enum GameModes {
@@ -63,36 +57,38 @@ pub struct Player {
     pub base: usize,
 }
 
-// AssaultCube has a custom vector that holds pointers to enemies,
-// which are also Players. We use this struct to read the enemy player's positions
+// AssaultCube custom vector type that holds pointers to enemies
+// which are also of type Player
 #[repr(C)]
 #[derive(Clone, Copy)]
 struct AcVector {
-    player_addresses: usize, // pointer to the buffer of pointers to the enemies
-    capacity: i32,           // max size of the buffer
-    elements: i32,           // how many elements there actually are
+    // pointer to player pointers buffer
+    player_addresses: usize,
+    capacity: i32,
+    elements: i32,
 }
 
 impl Player {
-    /// Creates a struct representing and giving access to the current player
-    pub fn local_player() -> Self {
-        // There is a global variable called "player1", which is a pointer
-        // to the actual, dynamically allocated player struct.
-        // In order to obtain the address of the player, just dereference the global pointer
-        let ac_base = game_base();
-        let player1_ptr = ac_base + PLAYER1_OFF;
-        let player1_base: u64 = InternalMemory::read(player1_ptr);
+    pub fn get_local_player() -> Self {
+        let ac_base = process::target::resolve_base_address().unwrap();
+        let local_player_pointer = ac_base + offsets::LOCAL_PLAYER;
+
+        println!("local player pointer: {:x}", local_player_pointer);
+
+        let local_player_base: u64 = InternalMemory::read(local_player_pointer);
+
+        println!("game base: {:x}", ac_base);
+        println!("local player base: {:x}", local_player_base);
 
         Player {
-            base: player1_base as usize,
+            base: local_player_base as usize,
         }
     }
 
-    /// Returns a vector of all other players in the lobby
-    pub fn players() -> Vec<Self> {
-        let players_base = game_base() + PLAYERS_OFF;
+    pub fn get_players_vector() -> Vec<Self> {
+        let players_base = process::target::resolve_base_address().unwrap() + offsets::PLAYERS_LIST;
 
-        let vec_of_players = unsafe {
+        let players_ac_vector = unsafe {
             let vec_ptr = players_base as *const AcVector;
             *vec_ptr
         };
@@ -100,24 +96,23 @@ impl Player {
         let mut players = Vec::with_capacity(MAX_PLAYERS);
 
         // fill the vector of enemies
-        for i in 0..vec_of_players.elements {
-            let player_addr: u64 =
-                InternalMemory::read(vec_of_players.player_addresses + (i * 8) as usize);
+        for i in 0..players_ac_vector.elements {
+            let player_address: u64 =
+                InternalMemory::read(players_ac_vector.player_addresses + (i * 8) as usize);
 
-            // sometimes pointers are NULL
-            if player_addr == 0x0 {
+            if player_address == 0x0 {
                 continue;
             }
+
             players.push(Player {
-                base: player_addr as usize,
+                base: player_address as usize,
             });
         }
 
         players
     }
 
-    /// reads the position of a player and returns it as 3D coordinates
-    pub fn get_pos(&self) -> Vec3 {
+    pub fn get_head_position(&self) -> Vec3 {
         let mut head: [f32; 3] = [0.0; 3];
         for i in 0..3 {
             head[i] = InternalMemory::read(self.base + PLAYER_POS_OFF + i * 4);
@@ -125,16 +120,18 @@ impl Player {
         Vec3::from(head)
     }
 
-    fn get_eyeheight(&self) -> f32 {
-        InternalMemory::read(self.base + PLAYER_EYEHEIGHT_OFF)
+    fn get_eye_height(&self) -> f32 {
+        InternalMemory::read(self.base + PLAYER_EYE_HEIGHT_OFF)
     }
 
-    fn get_gamemode() -> GameModes {
-        GameModes::from_i32(InternalMemory::read(game_base() + GAMEMODE_OFF))
+    fn get_game_mode() -> GameModes {
+        GameModes::from_i32(InternalMemory::read(
+            process::target::resolve_base_address().unwrap() + GAME_MODE_OFF,
+        ))
     }
 
     fn is_free_for_all() -> bool {
-        let gamemode = Self::get_gamemode();
+        let gamemode = Self::get_game_mode();
         match gamemode {
             GameModes::GmodeBotDeathMatch => true,
             GameModes::GmodeBotOneShotOneKill => true,
@@ -144,10 +141,7 @@ impl Player {
         }
     }
 
-    /// returns true if the two players are enemies
-    pub fn enemy_of(&self, other: &Player) -> bool {
-        // first, check the game mode against a list of game modes where
-        // the team does not matter
+    pub fn are_enemies(&self, other: &Player) -> bool {
         if Self::is_free_for_all() {
             return true;
         }
@@ -163,14 +157,14 @@ impl Player {
             foot[i] = InternalMemory::read(self.base + PLAYER_NEWPOS_OFF + i * 4);
         }
         let mut vec = Vec3::from(foot);
-        vec.z += self.get_eyeheight();
+        vec.z += self.get_eye_height();
         vec
     }
 
     /// Calculates the distance between to players in a 3D space
     pub fn distance_to(&self, other: &Player) -> f32 {
-        let self_pos = self.get_pos();
-        let other_pos = other.get_pos();
+        let self_pos = self.get_head_position();
+        let other_pos = other.get_head_position();
 
         Vec3::distance(self_pos, other_pos)
     }
@@ -182,12 +176,12 @@ impl Player {
 
     /// returns true if the player is alive
     pub fn is_alive(&self) -> bool {
-        InternalMemory::read::<u8>(self.base + STATE_OFF) == ALIVE_STATE
+        InternalMemory::read::<u8>(self.base + PLAYER_STATE_OFF) == ALIVE_STATE
     }
 
     /// returns true if a player is infront of the player on the 2D screen
     pub fn is_in_view(&self) -> bool {
-        let pos = self.get_pos();
+        let pos = self.get_head_position();
         let (window_width, window_height) = ESP::window_dimensions();
         ViewMatrix::new()
             .world_to_screen(pos, window_width, window_height)

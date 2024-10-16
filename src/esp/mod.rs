@@ -1,43 +1,40 @@
-// bindgen is used to generate C bindings for libGL!
 mod gl_bindings;
 use gl_bindings::*;
 
 use crate::Player;
 
-mod ebox;
-use ebox::ESPBox;
+mod esp_box;
+use esp_box::ESPBox;
 
-// some RGB values
 const ENEMY_ESP_COLOR: [GLubyte; 3] = [252, 18, 10];
 const TEAM_ESP_COLOR: [GLubyte; 3] = [38, 217, 50];
 
-/// COnfigures and handles ESP logic
 pub struct ESP {
     player: Player,
     esp_box: ESPBox,
 }
 
 impl ESP {
-    /// Creates a new ESP
-    pub fn new() -> Self {
+    pub fn default() -> Self {
         ESP {
-            player: Player::local_player(),
+            player: Player::get_local_player(),
             esp_box: ESPBox::new(ENEMY_ESP_COLOR, TEAM_ESP_COLOR),
         }
     }
 
-    // switches the openGL mode into a 2D matrix and pushes the current state onto a stack
-    // so that we can pop it later. It also returns the current window dimensions
+    // switch openGL mode to 2d matrix and pushes current state onto a stack
+    // so we can pop it later
+    // returns current window dimensions
     fn switch_to_2d(&self) -> (GLint, GLint) {
         unsafe {
-            // save the current state
+            // save current state
             gl_bindings::glPushAttrib(GL_ALL_ATTRIB_BITS);
 
-            // save the current matrix
+            // save current matrix
             gl_bindings::glPushMatrix();
 
-            // obtain and set the current viewport (position and dimensions of the window)
-            // for the new matrix
+            // obtain and set current viewport (position and dimensions of the window)
+            // for new matrix
             let mut viewport: [GLint; 4] = [0; 4];
             let viewport_ptr = &mut viewport[0] as *mut GLint;
             gl_bindings::glGetIntegerv(GL_VIEWPORT, viewport_ptr);
@@ -46,7 +43,7 @@ impl ESP {
             // go into projection mode
             gl_bindings::glMatrixMode(GL_PROJECTION);
 
-            // loads a blank matrix
+            // load blank matrix
             gl_bindings::glLoadIdentity();
 
             gl_bindings::glOrtho(0.0, viewport[2].into(), viewport[3].into(), 0.0, -1.0, 1.0);
@@ -59,7 +56,7 @@ impl ESP {
         }
     }
 
-    // restores the attributes before leaving the hook
+    // restore 3d projection mode
     fn restore(&self) {
         unsafe {
             gl_bindings::glPopMatrix();
@@ -67,25 +64,19 @@ impl ESP {
         }
     }
 
-    /// If enabled, draw ESP boxes
     pub fn draw(&mut self) {
-        // save the current GL state, switch to 2D mode and obtain the window dimenstions
-        let win_dimensions = self.switch_to_2d();
+        let window_dimensions = self.switch_to_2d();
+        let players = Player::get_players_vector();
 
-        // obtain a list of all bots
-        let players = Player::players();
-
-        for p in players.iter() {
-            // filter out dead enemies
-            if !p.is_alive() {
+        for player in players.iter() {
+            if !player.is_alive() {
                 continue;
             }
 
-            // draw ESP boxes for the remaining
-            self.esp_box.draw_box(p, &self.player, win_dimensions)
+            self.esp_box
+                .draw_box(player, &self.player, window_dimensions)
         }
 
-        // go back into 3D projection mode and let the game carry on
         self.restore();
     }
 
@@ -99,4 +90,3 @@ impl ESP {
         (viewport[2], viewport[3])
     }
 }
-

@@ -8,8 +8,8 @@ pub use memdata::MemData;
 
 use crate::Process;
 
-/// A wrapper for writing / reading memory through /proc/mem. This is needed when
-/// trying to write to a r-x page for example, as this method bypasses rwx protections.
+/// wrapper for writing/reading memory through /proc/mem
+/// used for bypassing rwx protections
 pub struct ProcMem {
     handle: File,
 }
@@ -23,7 +23,7 @@ impl ProcMem {
             .read(true)
             .write(true)
             .open(mempath)
-            .expect("Could not open /proc/self/mem for memory operations");
+            .expect("failed to open /proc/self/mem for memory operations");
 
         ProcMem { handle: memhandle }
     }
@@ -31,22 +31,22 @@ impl ProcMem {
     pub fn write<T: MemData>(&mut self, addr: usize, data: T) {
         self.handle
             .seek(SeekFrom::Start(addr as u64))
-            .expect("Could not seek /proc/self/mem file");
+            .expect("failed to seek /proc/self/mem file");
 
         self.handle
             .write(&data.get_vec())
-            .expect("Could not write to /proc/self/mem file");
+            .expect("failed write to /proc/self/mem file");
     }
 
     pub fn read<T: MemData + Copy>(&mut self, addr: usize) -> T {
         self.handle
             .seek(SeekFrom::Start(addr as u64))
-            .expect("Could not seek /proc/self/mem file");
+            .expect("failed to seek /proc/self/mem file");
 
         let mut _buf = T::make_buf();
         self.handle
             .read(&mut _buf)
-            .expect("Could not read from /proc/self/mem file");
+            .expect("failed to read from /proc/self/mem file");
 
         T::from_vec(&_buf)
     }
@@ -79,6 +79,20 @@ impl ProcMem {
             rest -= size;
             curr += size;
         }
+    }
+
+    pub fn read_n(&mut self, addr: usize, size: usize) -> Vec<u8> {
+        let mut ret = Vec::new();
+        let mut rest = size;
+        let mut curr = 0;
+        while rest != 0 {
+            let data = self.read::<u8>(addr + curr);
+            ret.push(data);
+            rest -= 1;
+            curr += 1;
+        }
+
+        ret
     }
 }
 
