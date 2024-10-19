@@ -8,8 +8,8 @@ pub use memdata::MemData;
 
 use crate::Process;
 
-/// wrapper for writing/reading memory through /proc/mem
-/// used for bypassing rwx protections
+// wrapper for reading/writing memory through /proc/mem
+// used for bypassing rwx protections
 pub struct ProcMem {
     handle: File,
 }
@@ -96,7 +96,7 @@ impl ProcMem {
     }
 }
 
-/// a wrapper for reading and writing dynamic data through pointers
+// wrapper for reading/writing dynamic data through pointers
 #[derive(Clone)]
 pub struct InternalMemory {}
 

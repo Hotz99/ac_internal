@@ -1,4 +1,4 @@
-/**
+/*
 * This hack is relatively simple. It is loaded into the AssaultCube process through
 * the LD_PRELOAD technique (e.g.) LD_PRELOAD=./hack.so ./assaultcube.sh in the main AC directory.
 * There is a constructor, which runs at load time. It is used to initialize the hack by
@@ -16,63 +16,62 @@
 *  The reason we use statics here is that we don't want to reload the entire hack
 *  for each frame
 */
-use std::thread;
-use std::time::Duration;
-
-extern crate ctor;
-extern crate libloading;
 use ctor::ctor;
+use std::{rc::Rc, thread, time};
 
-pub mod aimbot;
 pub mod esp;
+pub mod game;
+pub mod hacks;
 pub mod offsets;
 pub mod player;
 pub mod process;
 pub mod utils;
 
-pub use aimbot::*;
 pub use esp::*;
+pub use game::*;
+pub use hacks::*;
 pub use player::*;
 pub use process::*;
 pub use utils::*;
 
-/// static reference to hack instance
-/// instantiated on load()
-/// used every frame on SDL_GL_SwapBuffers()
+// static reference to hack instance
+// instantiated on load()
+// used every frame on SDL_GL_SwapBuffers()
 static mut AC_HACK: Option<AcHack> = None;
 
-/// reference to the dynamiclly loaded libSDL2
-/// used to resolve the address of the original SDL_GL_SwapBuffers()
-/// when unhooking
+// reference to the dynamiclly loaded libSDL2
+// used to resolve the address of the original SDL_GL_SwapBuffers()
+// when unhooking
 static mut SDL2_DYLIB: Option<libloading::Library> = None;
 
 #[allow(dead_code)]
 struct AcHack {
-    pub game_base: usize,
-    pub player: Player,
-
+    pub game: Rc<game::Game>,
+    pub local_player: Rc<player::Player>,
     pub god_mode: GodMode,
-
-    /// hooks the shooting function and enables infinite ammo
     pub infinite_ammo: InfiniteAmmo,
-
     pub aimbot: AimBot,
-
     pub esp: ESP,
 }
 
 impl AcHack {
     fn default() -> Self {
-        // get a handle to the current process
-        let player = Player::get_local_player();
+        let game = Rc::new(game::Game::default());
+        let local_player = Rc::new(player::Player::new(process::InternalMemory::read::<u64>(
+            game.base_addr + offsets::LOCAL_PLAYER,
+        ) as usize));
+
+        let aimbot = AimBot::new(Rc::clone(&game), Rc::clone(&local_player));
+        let esp = ESP::new(Rc::clone(&game), Rc::clone(&local_player));
+        let god_mode = GodMode::new(game.base_addr, local_player.base_addr);
+
         AcHack {
-            game_base: process::target::resolve_base_address()
-                .expect("failed to resolve game base"),
-            aimbot: AimBot::default(),
-            esp: ESP::default(),
-            god_mode: GodMode::default(),
+            game,
+            local_player,
+            aimbot,
+            esp,
+            god_mode,
             infinite_ammo: InfiniteAmmo::default(),
-            player,
         }
     }
 
@@ -90,8 +89,7 @@ impl AcHack {
     }
 }
 
-/// This function is executed when the hack is loaded into the game
-/// it is used to initialize the hack, launch a new thread that listens for keyboard bindings etc
+// called when shared object is loaded
 #[ctor]
 fn load() {
     // check if current process has a linux_64_client module
@@ -120,11 +118,10 @@ fn load() {
         panic!("failed to find libSDL2 in current process");
     }
 
-    println!("Successfully loaded the hack into the game...");
-    println!("Waiting 5 seconds for the game to initialize it self before touching anything.");
+    println!("loaded hack into AssaultCube");
 
     thread::spawn(|| {
-        thread::sleep(Duration::from_secs(5));
+        thread::sleep(time::Duration::from_secs(5));
 
         unsafe {
             AC_HACK = Some(AcHack::init());

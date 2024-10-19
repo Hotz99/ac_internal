@@ -10,6 +10,8 @@ fn fill_array(arr: &mut [u8], vec: &Vec<u8>) {
     }
 }
 
+// each impl transmutes the data type to an n byte vector
+// this vector is a raw memory representation of the data type
 pub trait MemData {
     fn get_vec(self) -> Vec<u8>;
     fn from_vec(vec: &Vec<u8>) -> Self;
@@ -185,5 +187,23 @@ impl MemData for f64 {
 
     fn make_buf() -> Vec<u8> {
         vec![0 as u8; 8]
+    }
+}
+
+impl MemData for usize {
+    fn get_vec(self) -> Vec<u8> {
+        let data = unsafe { transmute::<usize, [u8; std::mem::size_of::<usize>()]>(self) };
+        Vec::from(data)
+    }
+
+    fn from_vec(vec: &Vec<u8>) -> Self {
+        let mut arr: [u8; std::mem::size_of::<usize>()] = [0; std::mem::size_of::<usize>()];
+        fill_array(&mut arr, vec);
+        let discrete = unsafe { transmute::<[u8; std::mem::size_of::<usize>()], usize>(arr) };
+        discrete
+    }
+
+    fn make_buf() -> Vec<u8> {
+        vec![0 as u8; std::mem::size_of::<usize>()]
     }
 }

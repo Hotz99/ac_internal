@@ -1,7 +1,8 @@
 mod gl_bindings;
 use gl_bindings::*;
 
-use crate::Player;
+use crate::{game, player};
+use std::rc::Rc;
 
 mod esp_box;
 use esp_box::ESPBox;
@@ -10,14 +11,16 @@ const ENEMY_ESP_COLOR: [GLubyte; 3] = [252, 18, 10];
 const TEAM_ESP_COLOR: [GLubyte; 3] = [38, 217, 50];
 
 pub struct ESP {
-    player: Player,
+    game: Rc<game::Game>,
+    local_player: Rc<player::Player>,
     esp_box: ESPBox,
 }
 
 impl ESP {
-    pub fn default() -> Self {
+    pub fn new(game: Rc<game::Game>, local_player: Rc<player::Player>) -> Self {
         ESP {
-            player: Player::get_local_player(),
+            game,
+            local_player,
             esp_box: ESPBox::new(ENEMY_ESP_COLOR, TEAM_ESP_COLOR),
         }
     }
@@ -64,9 +67,9 @@ impl ESP {
         }
     }
 
-    pub fn draw(&mut self) {
+    pub fn draw(&self) {
         let window_dimensions = self.switch_to_2d();
-        let players = Player::get_players_vector();
+        let players = self.game.get_players_vector();
 
         for player in players.iter() {
             if !player.is_alive() {
@@ -74,7 +77,9 @@ impl ESP {
             }
 
             self.esp_box
-                .draw_box(player, &self.player, window_dimensions)
+                .draw_box(&self.local_player, &player, window_dimensions);
+
+            println!("player name: {:?}", player.get_name());
         }
 
         self.restore();
