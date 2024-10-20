@@ -1,12 +1,12 @@
+mod mem_data;
+use self::mem_data::MemData;
+
+use crate::process;
+
 use std::fs::{File, OpenOptions};
 use std::io::prelude::*;
 use std::io::SeekFrom;
 use std::path::Path;
-
-mod memdata;
-pub use memdata::MemData;
-
-use crate::Process;
 
 // wrapper for reading/writing memory through /proc/mem
 // used for bypassing rwx protections
@@ -16,7 +16,7 @@ pub struct ProcMem {
 
 impl ProcMem {
     pub fn init() -> Self {
-        let process = Process::current().unwrap();
+        let process = process::Process::get_current().unwrap();
         let mempath = format!("{}/mem", &process.proc_dir);
         let mempath = Path::new(&mempath);
         let memhandle = OpenOptions::new()
@@ -28,7 +28,7 @@ impl ProcMem {
         ProcMem { handle: memhandle }
     }
 
-    pub fn write<T: MemData>(&mut self, addr: usize, data: T) {
+    pub fn write<T: mem_data::MemData>(&mut self, addr: usize, data: T) {
         self.handle
             .seek(SeekFrom::Start(addr as u64))
             .expect("failed to seek /proc/self/mem file");
@@ -38,7 +38,7 @@ impl ProcMem {
             .expect("failed write to /proc/self/mem file");
     }
 
-    pub fn read<T: MemData + Copy>(&mut self, addr: usize) -> T {
+    pub fn read<T: mem_data::MemData + Copy>(&mut self, addr: usize) -> T {
         self.handle
             .seek(SeekFrom::Start(addr as u64))
             .expect("failed to seek /proc/self/mem file");
@@ -51,7 +51,7 @@ impl ProcMem {
         T::from_vec(&_buf)
     }
 
-    // a basic memcpy() for larger data buffers. This is called when copying shellcode
+    // akin to memcpy() for larger buffers
     pub fn write_n(&mut self, addr: usize, data: &[u8]) {
         let mut rest = data.len();
         let mut curr = 0;
@@ -101,12 +101,12 @@ impl ProcMem {
 pub struct InternalMemory {}
 
 impl InternalMemory {
-    pub fn write<T: MemData>(addr: usize, data: T) {
+    pub fn write<T: mem_data::MemData>(addr: usize, data: T) {
         let ptr: *mut T = addr as *mut T;
         unsafe { *ptr = data };
     }
 
-    pub fn read<T: MemData + Copy>(addr: usize) -> T {
+    pub fn read<T: mem_data::MemData + Copy>(addr: usize) -> T {
         let ptr: *const T = addr as *const T;
         let ret: T = unsafe { *ptr };
         ret

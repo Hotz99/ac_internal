@@ -1,34 +1,58 @@
-extern crate bindgen;
-
 use std::env;
 use std::path::PathBuf;
 
-fn main() {
+const GL_HEADER: &str = "src/utils/bindings/gl_header.h";
+const GL_BINDINGS_FILE: &str = "gl_bindings.rs";
+const SDL2_HEADER: &str = "src/utils/bindings/sdl2_header.h";
+const SDL2_BINDINGS_FILE: &str = "sdl2_bindings.rs";
+const AIMBOT_TRAMPOLINE_OUT: &str = "src/hacks/aim/bot_trampoline.cpp";
 
-    // tell rustc to link with libGL. Needed for drawing
+fn main() {
+    // tell rustc to link libGL
+    // needed for drawing
     println!("cargo:rustc-link-lib=GL");
 
-    // tell cargo to re-build if the gl_bindings.h file changes
-    println!("cargo:rerun-if-changed=src/esp/gl_bindings.h");
+    // tell cargo to re-build if the gl_bindings.h changes
+    println!("cargo:rerun-if-changed={}", GL_HEADER);
 
-    // generate Rust bindings for libGL
+    // generate rust bindings for libGL
     let bindings = bindgen::Builder::default()
-        .header("src/esp/gl_bindings.h")
-        .parse_callbacks(Box::new(bindgen::CargoCallbacks))
+        .header(GL_HEADER)
+        .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
         .generate()
-        .expect("Unable to generate bindings");
+        .expect("failed to generate GL bindings");
 
-    // Write the bindings to the $OUT_DIR/bindings.rs file. We will include this file later
+    // write bindings to $OUT_DIR/gl_bindings.rs
     let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
     bindings
-        .write_to_file(out_path.join("gl_bindings.rs"))
-        .expect("Couldn't write bindings!");
+        .write_to_file(out_path.join(GL_BINDINGS_FILE))
+        .expect("failed to write GL bindings");
 
+    // tell rustc to link libSDL2
+    // needed for hooking
+    println!("cargo:rustc-link-lib=SDL2");
 
-    // In the second part of the build process, compile a CPP trampoline
-    println!("cargo:rerun-if-changed=src/aimbot/bot_trampoline.cpp");
+    // tell cargo to re-build if the sdl_bindings.h changes
+    println!("cargo:rerun-if-changed={}", SDL2_HEADER);
+
+    // generate rust bindings for libSDL2
+    let bindings = bindgen::Builder::default()
+        .header(SDL2_HEADER)
+        .allowlist_type("SDL_Window")
+        .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
+        .generate()
+        .expect("failed to generate SDL2 bindings");
+
+    // write bindings to $OUT_DIR/sdl2_bindings.rs
+    let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
+    bindings
+        .write_to_file(out_path.join(SDL2_BINDINGS_FILE))
+        .expect("failed to write SDL2 bindings");
+
+    // compile aimbot cpp trampoline
+    println!("cargo:rerun-if-changed={}", AIMBOT_TRAMPOLINE_OUT);
     cc::Build::new()
         .cpp(true)
-        .file("src/aimbot/bot_trampoline.cpp")
+        .file(AIMBOT_TRAMPOLINE_OUT)
         .compile("bot_trampoline");
 }

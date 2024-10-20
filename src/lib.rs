@@ -16,93 +16,44 @@
 *  The reason we use statics here is that we don't want to reload the entire hack
 *  for each frame
 */
-use ctor::ctor;
-use std::{rc::Rc, thread, time};
 
-pub mod esp;
 pub mod game;
 pub mod hacks;
+pub mod instance;
 pub mod offsets;
 pub mod player;
 pub mod process;
 pub mod utils;
 
-pub use esp::*;
-pub use game::*;
-pub use hacks::*;
-pub use player::*;
-pub use process::*;
-pub use utils::*;
+extern crate ctor;
+use ctor::ctor;
 
 // static reference to hack instance
 // instantiated on load()
 // used every frame on SDL_GL_SwapBuffers()
-static mut AC_HACK: Option<AcHack> = None;
+static mut INSTANCE: Option<instance::Instance> = None;
+
+const GAME_MODULE: &str = "linux_64_client";
 
 // reference to the dynamiclly loaded libSDL2
 // used to resolve the address of the original SDL_GL_SwapBuffers()
 // when unhooking
 static mut SDL2_DYLIB: Option<libloading::Library> = None;
 
-#[allow(dead_code)]
-struct AcHack {
-    pub game: Rc<game::Game>,
-    pub local_player: Rc<player::Player>,
-    pub god_mode: GodMode,
-    pub infinite_ammo: InfiniteAmmo,
-    pub aimbot: AimBot,
-    pub esp: ESP,
-}
-
-impl AcHack {
-    fn default() -> Self {
-        let game = Rc::new(game::Game::default());
-        let local_player = Rc::new(player::Player::new(process::InternalMemory::read::<u64>(
-            game.base_addr + offsets::LOCAL_PLAYER,
-        ) as usize));
-
-        let aimbot = AimBot::new(Rc::clone(&game), Rc::clone(&local_player));
-        let esp = ESP::new(Rc::clone(&game), Rc::clone(&local_player));
-        let god_mode = GodMode::new(game.base_addr, local_player.base_addr);
-
-        AcHack {
-            game,
-            local_player,
-            aimbot,
-            esp,
-            god_mode,
-            infinite_ammo: InfiniteAmmo::default(),
-        }
-    }
-
-    fn init() -> Self {
-        let mut hack = Self::default();
-
-        // all the following are default settings for this hack
-        //hack.aimbot.enable();
-        //hack.aimbot.norecoil_spread.toggle();
-        //hack.aimbot.enable_autoshoot();
-        hack.infinite_ammo.toggle();
-        //hack.god_mode.toggle();
-
-        hack
-    }
-}
-
 // called when shared object is loaded
 #[ctor]
 fn load() {
-    // check if current process has a linux_64_client module
-    let process = Process::current().expect("failed to read /proc/self/maps");
+    let process = process::Process::get_current().expect("failed to read /proc/self/maps");
 
-    if let Err(_e) = process.module("linux_64_client") {
+    if let Err(_e) = process.get_module(GAME_MODULE) {
         return;
     }
 
     let mut found_lib_sdl2 = false;
     let modules = process
-        .modules()
+        .get_all_modules()
         .expect("failed to parse the loaded modules");
+
     for module_name in modules.keys() {
         if module_name.contains("libSDL2") {
             unsafe {
@@ -118,41 +69,48 @@ fn load() {
         panic!("failed to find libSDL2 in current process");
     }
 
-    println!("loaded hack into AssaultCube");
+    println!("loaded instance into assaultcube");
 
-    thread::spawn(|| {
-        thread::sleep(time::Duration::from_secs(5));
+    std::thread::spawn(|| {
+        std::thread::sleep(std::time::Duration::from_secs(3));
 
         unsafe {
-            AC_HACK = Some(AcHack::init());
+            INSTANCE = Some(instance::Instance::init());
         }
     });
 }
 
-fn forward_to_original_sdl_swap_window() -> i64 {
+fn forward_to_original_sdl_swap_window(
+    window: *mut utils::bindings::sdl2_bindings::SDL_Window,
+) -> i64 {
     unsafe {
         // hook into the function in the external library, not the one in the current process
-        let original_sdl_swap_window: libloading::Symbol<unsafe extern "C" fn() -> i64> =
-            SDL2_DYLIB
-                .as_ref()
-                .unwrap()
-                .get(b"SDL_GL_SwapWindow\0")
-                .expect("failed to find SDL_GL_SwapWindow() in libSDL2");
+        let original_sdl_swap_window: libloading::Symbol<
+            unsafe extern "C" fn(window: *mut utils::bindings::sdl2_bindings::SDL_Window) -> i64,
+        > = SDL2_DYLIB
+            .as_ref()
+            .unwrap()
+            .get(b"SDL_GL_SwapWindow\0")
+            .expect("failed to find SDL_GL_SwapWindow() in libSDL2");
 
-        original_sdl_swap_window()
+        // ensure the original function args are correct
+        // spent too long debugging this when all I had to do was read SDL2 docs
+        original_sdl_swap_window(window)
     }
 }
 
-//#[no_mangle]
-//pub extern "C" fn SDL_GL_SwapWindow() -> i64 {
-//    let mut hack = unsafe { &mut AC_HACK };
-//
-//    if hack.is_none() {
-//        return forward_to_original_sdl_swap_window();
-//    }
-//
-//    //hack.esp.draw();
-//    //hack.aimbot.logic();
-//
-//    forward_to_original_sdl_swap_window()
-//}
+#[no_mangle]
+pub extern "C" fn SDL_GL_SwapWindow(
+    window: *mut utils::bindings::sdl2_bindings::SDL_Window,
+) -> i64 {
+    let instance = unsafe { &mut INSTANCE.as_ref() };
+
+    if instance.is_none() {
+        return forward_to_original_sdl_swap_window(window);
+    }
+
+    (*instance).unwrap().esp.draw();
+    //hack.aimbot.logic();
+
+    forward_to_original_sdl_swap_window(window)
+}

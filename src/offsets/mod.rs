@@ -1,5 +1,5 @@
 pub const LOCAL_PLAYER: usize = 0x1A3518;
-pub const PLAYERS_LIST: usize = 0x1A3A20;
+pub const PLAYERS_LIST: usize = 0x1A3520;
 
 pub const GAME_MODE: usize = 0x128294;
 pub const MAX_PLAYERS: usize = 32;
@@ -11,7 +11,8 @@ pub const PLAYER_NAME: usize = 0x219;
 pub const PLAYER_POS: usize = 0x8;
 pub const PLAYER_NEWPOS: usize = 0x38;
 pub const PLAYER_EYE_HEIGHT: usize = 0x60;
-pub const PLAYER_IS_ATTACKING: usize = 0x23c;
+pub const PLAYER_IS_ATTACKING: usize = 0x23C;
+pub const VIEW_MATRIX: usize = 0x1B4FCC;
 
 pub const CROSSHAIR: usize = 0xbad63;
 

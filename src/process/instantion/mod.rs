@@ -1,43 +1,40 @@
-use std::fs::{read_dir, DirEntry};
-use std::path::Path;
-use std::process;
+use crate::process;
 
-use crate::process::helpers::*;
-use crate::{Process, ProcessErrors};
+fn from_proc_dir(
+    dir: &std::fs::DirEntry,
+    is_internal: bool,
+) -> Result<process::Process, process::ProcessErrors> {
+    let exe = process::read_exe(dir);
 
-fn from_proc_dir(dir: &DirEntry, is_internal: bool) -> Result<Process, ProcessErrors> {
-    let exe = read_exe(dir);
     if !exe.0 {
-        return Err(ProcessErrors::ProcInvalid);
+        return Err(process::ProcessErrors::ProcInvalid);
     }
 
-    let exe = exe.1;
-
-    let pid = path_basename(dir).parse();
+    let pid = process::path_basename(dir).parse();
     if let Err(_) = pid {
-        return Err(ProcessErrors::ProcInvalid);
+        return Err(process::ProcessErrors::ProcInvalid);
     }
 
-    let process = Process {
+    let process = process::Process {
         pid: pid.unwrap(),
         proc_dir: dir.path().into_os_string().into_string().unwrap(),
-        exe: exe,
-        is_internal: is_internal,
+        exe: exe.1,
+        is_internal,
     };
 
     Ok(process)
 }
 
-pub fn from_current() -> Result<Process, ProcessErrors> {
-    let curr_pid = process::id();
+pub fn from_current() -> Result<process::Process, process::ProcessErrors> {
+    let curr_pid = std::process::id();
     let proc_dir = std::format!("/proc/{}", curr_pid);
-    let proc_root = Path::new("/proc");
-    for entry in read_dir(proc_root).expect("Failed to read /proc dir") {
-        let entry = entry.expect("Failed to get next entry in /proc dir");
+    let proc_root = std::path::Path::new("/proc");
+    for entry in std::fs::read_dir(proc_root).expect("failed to read /proc dir") {
+        let entry = entry.expect("failed to get next entry in /proc dir");
         if entry.path().into_os_string().into_string().unwrap() == proc_dir {
             return from_proc_dir(&entry, true);
         }
     }
 
-    Err(ProcessErrors::NotFound)
+    Err(process::ProcessErrors::NotFound)
 }

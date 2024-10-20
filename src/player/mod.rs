@@ -1,4 +1,4 @@
-use crate::{esp, offsets, process, utils};
+use crate::{hacks, offsets, process, utils};
 
 // used for aimbot/ESP
 const ALIVE_STATE: u8 = 0;
@@ -52,8 +52,8 @@ impl Player {
 
     pub fn is_in_view(player: &Self) -> bool {
         let head_pos = player.get_head_pos();
-        let (window_width, window_height) = esp::ESP::window_dimensions();
-        utils::math::ViewMatrix::new()
+        let (window_width, window_height) = hacks::esp::ESP::get_window_dimensions();
+        utils::math::ViewMatrix::default()
             .world_to_screen(head_pos, window_width, window_height)
             .0
     }

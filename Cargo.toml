@@ -1,20 +1,16 @@
 [package]
-name = "ac_rhack"
+name = "ac_internal"
 version = "0.1.0"
-authors = ["Simon Scannell <s.scannell@web.de>"]
-edition = "2018"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [lib]
-name  = "ac_rhack"
-crate_type = ["cdylib"]
-
-[dependencies]
-ctor = "0.1.16"
-nix = "0.19.0"
-libloading = "0.6"
-
+name = "ac_internal"
+crate-type = ["cdylib"]
 
 [build-dependencies]
-bindgen = "0.53.1"
-cc = "1.0"
+bindgen = "0.70.1"
+cc = "1.1.31"
+
+[dependencies]
+ctor = "0.2.8"
+libloading = "0.8.5"
+nix = { version = "0.29.0", features = ["mman"] }

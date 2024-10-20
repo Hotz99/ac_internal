@@ -1,26 +1,25 @@
-use std::collections::HashMap;
-
-mod helpers;
-/**
+/*
  * Finds the assault cube process and returns information about it: base of the different sections, pid etc.
  * This module can also inject an arbitrary SO file into a a process as a new thread and run a specified function from it.
  */
+
+// re-exporting modules for shorter imports
+pub mod helpers;
+pub use self::helpers::*;
 mod instantion;
-mod memory;
-mod modules;
-pub mod target;
+pub mod memory;
+pub use self::memory::*;
+pub mod modules;
+pub use self::modules::*;
 
-// export all public symbols of the sub modules
-pub use memory::*;
-pub use modules::*;
-//pub use injection::*;
+use std::collections::HashMap;
 
-/// represents a loaded binary or shared object file (e.g. the binary itself or libc)
+// represents a loaded shared object
 #[derive(Clone)]
 pub struct Module {
     name: String,
     pub file: String,
-    pub base: usize,
+    pub base_addr: usize,
     size: Option<usize>,
 }
 
@@ -32,36 +31,34 @@ pub struct Process {
     is_internal: bool,
 }
 
-/// Indicates the reason for a failure on a process operation
 #[derive(Debug)]
 pub enum ProcessErrors {
-    /// On Linux systems, this indicates a failure to interact with /proc
+    // failure to interact with /proc (linux only)
     ProcDirFailure,
 
-    /// A process became invalid (e.g. it exited)
+    // e.g. process is not running or exited
     ProcInvalid,
 
-    /// When a PID or exe name could not be linked to a valid process
+    // pid or exe name could not be linked to a valid process
     NotFound,
 
-    /// Permissions are insufficient to get access to the target process
+    // insufficient perms to access target process
     Permissions,
 
-    /// Failed to open a file backing a module
+    // failed to open a file backing a module
     ModuleFileErr,
 }
 
-/// Main struct
 impl Process {
-    pub fn current() -> Result<Self, ProcessErrors> {
+    pub fn get_current() -> Result<Self, ProcessErrors> {
         instantion::from_current()
     }
 
-    pub fn module(&self, module_name: &str) -> Result<Module, ProcessErrors> {
+    pub fn get_module(&self, module_name: &str) -> Result<Module, ProcessErrors> {
         modules::get_module(self, module_name)
     }
 
-    pub fn modules(&self) -> Result<HashMap<String, Module>, ProcessErrors> {
+    pub fn get_all_modules(&self) -> Result<HashMap<String, Module>, ProcessErrors> {
         modules::parse_modules(self)
     }
 }
