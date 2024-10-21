@@ -110,7 +110,7 @@ pub extern "C" fn SDL_GL_SwapWindow(
     }
 
     (*instance).unwrap().esp.draw();
-    //hack.aimbot.logic();
+    //(*instance).unwrap().aimbot.logic();
 
     forward_to_original_sdl_swap_window(window)
 }

@@ -1,6 +1,5 @@
 use crate::{hacks, offsets, process, utils};
 
-// used for aimbot/ESP
 const ALIVE_STATE: u8 = 0;
 
 pub struct Player {
@@ -26,7 +25,9 @@ impl Player {
     }
 
     pub fn is_alive(&self) -> bool {
-        process::InternalMemory::read::<u8>(self.base_addr + offsets::PLAYER_STATE) == ALIVE_STATE
+        // TODO fix offset
+        //process::InternalMemory::read::<u8>(self.base_addr + offsets::PLAYER_STATE) == ALIVE_STATE
+        process::InternalMemory::read::<u8>(self.base_addr + offsets::PLAYER_HEALTH) <= 0
     }
 
     pub fn is_enemy(&self, other: &Player) -> bool {

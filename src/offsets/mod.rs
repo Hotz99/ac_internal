@@ -5,8 +5,8 @@ pub const GAME_MODE: usize = 0x128294;
 pub const MAX_PLAYERS: usize = 32;
 pub const TEAM: usize = 0x344;
 
-// alive, dead, etc.
-pub const PLAYER_STATE: usize = 0x86;
+pub const PLAYER_STATE: usize = 0x74;
+pub const PLAYER_HEALTH: usize = 0x100;
 pub const PLAYER_NAME: usize = 0x219;
 pub const PLAYER_POS: usize = 0x8;
 pub const PLAYER_NEWPOS: usize = 0x38;
@@ -23,4 +23,4 @@ pub const PITCH: usize = 0x48;
 pub const IS_VISIBLE_FN: usize = 0xDA520;
 pub const AMMO_DECREASE_FN: usize = 0x10306E;
 pub const RECOIL_FN: usize = 0xbd220;
-pub const DAMAGE_FN: usize = 0x2fd10;
+pub const DAMAGE_PATCH: usize = 0x35D10;
