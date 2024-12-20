@@ -1,4 +1,3 @@
-
 ## What ?
 
 `ac_internal` is a Rust-based dynamic library for Assault Cube, providing features such as ESP boxes, godmode and infinite ammo. We load our logic into the target process memory region (hence "internal") with `LD_PRELOAD`, enabling the real-time modification of game behavior through direct memory manipulation.
@@ -12,6 +11,10 @@ To deepen my understanding of:
   - Low-level Programming: Writing shellcode in x64 assembly and ensuring correct register and memory management.
   - Interoperability: Combining Rust with system libraries like SDL2 and OpenGL.
   - Real-time Graphics Rendering: Utilizing OpenGL to draw ESP elements dynamically within the game window.
+
+## Credits
+
+This project builds upon the [ac_rhack](https://github.com/scannells/ac_rhack) repository. Thank you to the author for their foundational work.
 
 ### Features
 1. Direct Memory Access
@@ -38,6 +41,8 @@ To deepen my understanding of:
 
 - **Rust and Cargo**: Install from [rustup.rs](https://rustup.rs/).
 - **Assault Cube Game**: Install from https://assault.cubers.net/.
+
+NOTE: The current game version is v1.3.0.2.
 
 ---
 
@@ -84,7 +89,7 @@ Using the `lldb` debugger, an example `launch.json` configuration is:
 
 ### Manual Testing
 
-Alternatively, you can manually launch the game with LD_PRELOAD to test the library:
+Alternatively, you can manually launch the game with `LD_PRELOAD` to test the library:
 
 `LD_PRELOAD=<absolute_path_to_compiled_library>/libac_internal.so <absolute_path_to_assault_cube_executable>/linux_64_client`
 
@@ -106,6 +111,4 @@ Alternatively, you can manually launch the game with LD_PRELOAD to test the libr
 
 5. **Proper Documentation and Testing**
 
-## Credits
 
-This project builds upon the [ac_rhack](https://github.com/scannells/ac_rhack) repository. Thank you to the author for their foundational work.
