@@ -1,22 +1,3 @@
-/*
-* This hack is relatively simple. It is loaded into the AssaultCube process through
-* the LD_PRELOAD technique (e.g.) LD_PRELOAD=./hack.so ./assaultcube.sh in the main AC directory.
-* There is a constructor, which runs at load time. It is used to initialize the hack by
-*  - verifying this library is actually loaded into the game and not for example /bin/sh when
-        launching AC through ./assaultcube.sh
-*  - finding offsets of code to patch
-*  - generating shellcode on the fly through nasm for hooks
-*  - prepares hooks
-*  - initialized the global AC_HACK variable
-*  - dynamically loads libSDL and obtains a pointer to SDL_GL_SwapWindow()
-*
-*  By using the LD_PRELOAD technique, this hack hooks SDL_GL_SwapWindow().
-*  This function will then use the initialized, static variable AC_HACK to perform the logic
-*  it needs to do such as getting player positions, draw ESP boxes etc.
-*  The reason we use statics here is that we don't want to reload the entire hack
-*  for each frame
-*/
-
 pub mod game;
 pub mod hacks;
 pub mod instance;
@@ -27,90 +8,151 @@ pub mod utils;
 
 extern crate ctor;
 use ctor::ctor;
+use utils::bindings::sdl2_bindings;
 
 // static reference to hack instance
 // instantiated on load()
 // used every frame on SDL_GL_SwapBuffers()
-static mut INSTANCE: Option<instance::Instance> = None;
-
+// shared between main and hook threads
+pub static mut INSTANCE: Option<instance::Instance> = None;
 const GAME_MODULE: &str = "linux_64_client";
 
-// reference to the dynamiclly loaded libSDL2
-// used to resolve the address of the original SDL_GL_SwapBuffers()
-// when unhooking
+// reference to the dynamically loaded libSDL2
+// used to resolve the address of the original SDL_GL_SwapBuffers() when unhooking
 static mut SDL2_DYLIB: Option<libloading::Library> = None;
 
-// called when shared object is loaded
+const INPUT_POLLING_TIMEOUT_MS: u64 = 150;
+
+// called when this lib is loaded
 #[ctor]
 fn load() {
-    let process = process::Process::get_current().expect("failed to read /proc/self/maps");
+    let process = process::Process::get_current().expect("failed to read /proc/{self}/maps");
 
     if let Err(_e) = process.get_module(GAME_MODULE) {
         return;
     }
 
-    let mut found_lib_sdl2 = false;
     let modules = process
         .get_all_modules()
         .expect("failed to parse the loaded modules");
 
-    for module_name in modules.keys() {
-        if module_name.contains("libSDL2") {
-            unsafe {
-                SDL2_DYLIB =
-                    Some(libloading::Library::new(module_name).expect("failed to load libSDL2"))
-            };
+    let module_name = modules
+        .keys()
+        .find(|name| name.contains("libSDL2"))
+        .expect("failed to find libSDL2");
 
-            found_lib_sdl2 = true;
-        }
-    }
+    unsafe {
+        SDL2_DYLIB = Some(libloading::Library::new(module_name).expect("failed to load libSDL2"))
+    };
 
-    if !found_lib_sdl2 {
-        panic!("failed to find libSDL2 in current process");
-    }
+    println!("[AC_INTERNAL] loaded instance into assaultcube");
 
-    println!("loaded instance into assaultcube");
+    std::thread::spawn(|| unsafe {
+        INSTANCE = Some(instance::Instance::default());
 
-    std::thread::spawn(|| {
-        std::thread::sleep(std::time::Duration::from_secs(3));
+        // nasty work, but wayland makes it hard to get keyboard input
+        // so we resort to polling SDL2
+        loop {
+            if is_key_pressed(sdl2_bindings::SDL_Scancode_SDL_SCANCODE_F1) {
+                if INSTANCE.as_mut().expect("instance is None").esp.toggle() {
+                    println!("[AC_INTERNAL] enabled ESP");
+                } else {
+                    println!("[AC_INTERNAL] disabled ESP");
+                }
+            } else if is_key_pressed(sdl2_bindings::SDL_Scancode_SDL_SCANCODE_F2) {
+                if INSTANCE
+                    .as_mut()
+                    .expect("instance is None")
+                    .god_mode
+                    .toggle()
+                {
+                    println!("[AC_INTERNAL] enabled god mode");
+                } else {
+                    println!("[AC_INTERNAL] disabled god mode");
+                }
+            } else if is_key_pressed(sdl2_bindings::SDL_Scancode_SDL_SCANCODE_F3) {
+                if INSTANCE
+                    .as_mut()
+                    .expect("instance is None")
+                    .infinite_ammo
+                    .toggle()
+                {
+                    println!("[AC_INTERNAL] enabled infinite ammo");
+                } else {
+                    println!("[AC_INTERNAL] disabled infinite ammo");
+                }
+            }
 
-        unsafe {
-            INSTANCE = Some(instance::Instance::init());
+            std::thread::sleep(std::time::Duration::from_millis(INPUT_POLLING_TIMEOUT_MS));
         }
     });
 }
 
-fn forward_to_original_sdl_swap_window(
-    window: *mut utils::bindings::sdl2_bindings::SDL_Window,
-) -> i64 {
+fn forward_to_original_sdl_swap_window(window: *mut sdl2_bindings::SDL_Window) -> i64 {
     unsafe {
+        if SDL2_DYLIB.as_ref().is_none() {
+            return 0;
+        }
         // hook into the function in the external library, not the one in the current process
         let original_sdl_swap_window: libloading::Symbol<
-            unsafe extern "C" fn(window: *mut utils::bindings::sdl2_bindings::SDL_Window) -> i64,
+            unsafe extern "C" fn(window: *mut sdl2_bindings::SDL_Window) -> i64,
         > = SDL2_DYLIB
             .as_ref()
             .unwrap()
             .get(b"SDL_GL_SwapWindow\0")
             .expect("failed to find SDL_GL_SwapWindow() in libSDL2");
 
-        // ensure the original function args are correct
-        // spent too long debugging this when all I had to do was read SDL2 docs
+        // read the docs to ensure args are correct
+        // https://wiki.libsdl.org/SDL2/SDL_GL_SwapWindow
         original_sdl_swap_window(window)
     }
 }
 
+// instruct compiler to not mangle the function name
+// so that it can be called from the C side (game)
 #[no_mangle]
-pub extern "C" fn SDL_GL_SwapWindow(
-    window: *mut utils::bindings::sdl2_bindings::SDL_Window,
-) -> i64 {
-    let instance = unsafe { &mut INSTANCE.as_ref() };
+pub extern "C" fn SDL_GL_SwapWindow(window: *mut sdl2_bindings::SDL_Window) -> i64 {
+    let mut instance = unsafe { INSTANCE.as_mut() };
 
-    if instance.is_none() {
+    if instance.is_none() || !instance.as_ref().unwrap().esp.is_enabled {
         return forward_to_original_sdl_swap_window(window);
     }
 
-    (*instance).unwrap().esp.draw();
-    //(*instance).unwrap().aimbot.logic();
+    // this current logic being executed is "inside" the game loop
+    // simply direct flow to ESP drawing logic
+    instance.as_mut().unwrap().esp.draw();
 
     forward_to_original_sdl_swap_window(window)
+}
+
+// https://wiki.libsdl.org/SDL2/SDL_GetKeyboardState
+fn sdl_get_keyboard_state(numkeys: *mut i32) -> *const u8 {
+    unsafe {
+        let original_sdl_get_keyboard_state: libloading::Symbol<
+            unsafe extern "C" fn(*mut i32) -> *const u8,
+        > = SDL2_DYLIB
+            .as_ref()
+            .unwrap()
+            .get(b"SDL_GetKeyboardState\0")
+            .expect("failed to find SDL_GetKeyboardState() in libSDL2");
+
+        original_sdl_get_keyboard_state(numkeys)
+    }
+}
+
+pub fn is_key_pressed(scancode: sdl2_bindings::SDL_Scancode) -> bool {
+    unsafe {
+        let mut keyboard_state_len: i32 = 0;
+        let keyboard_state_ptr = sdl_get_keyboard_state(&mut keyboard_state_len);
+
+        // form slice of keyboard state buffer
+        let keyboard_state_buffer =
+            std::slice::from_raw_parts(keyboard_state_ptr, keyboard_state_len as usize);
+
+        if keyboard_state_buffer.is_empty() {
+            return false;
+        }
+
+        keyboard_state_buffer[scancode as usize] != 0
+    }
 }

@@ -1,4 +1,4 @@
-use crate::{hacks, offsets, process, utils};
+use crate::{game, hacks, offsets, process, utils};
 
 const ALIVE_STATE: u8 = 0;
 
@@ -25,16 +25,16 @@ impl Player {
     }
 
     pub fn is_alive(&self) -> bool {
-        // TODO fix offset
+        // TODO fix PLAYER_STATE offset
         //process::InternalMemory::read::<u8>(self.base_addr + offsets::PLAYER_STATE) == ALIVE_STATE
-        process::InternalMemory::read::<u8>(self.base_addr + offsets::PLAYER_HEALTH) <= 0
+        process::InternalMemory::read::<u8>(self.base_addr + offsets::PLAYER_HEALTH) > 0
     }
 
     pub fn is_enemy(&self, other: &Player) -> bool {
-        // TODO
-        //if game::Game::is_free_for_all() {
-        //    return true;
-        //}
+        // TODO fix is_free_for_all()
+        // if game::Game::is_free_for_all() {
+        //     return true;
+        // }
 
         self.get_team() != other.get_team()
     }
@@ -62,12 +62,12 @@ impl Player {
     // returns next frame player position
     // needed for aimbot
     pub fn get_next_frame_pos(&self) -> utils::math::Vec3 {
-        let mut foot: [f32; 3] = [0.0; 3];
+        let mut foot_coords: [f32; 3] = [0.0; 3];
         for i in 0..3 {
-            foot[i] =
+            foot_coords[i] =
                 process::InternalMemory::read(self.base_addr + offsets::PLAYER_NEWPOS + i * 4);
         }
-        let mut vec = utils::math::Vec3::from(foot);
+        let mut vec = utils::math::Vec3::from(foot_coords);
         vec.z += self.get_eye_height();
         vec
     }

@@ -5,7 +5,6 @@ const GL_HEADER: &str = "src/utils/bindings/gl_header.h";
 const GL_BINDINGS_FILE: &str = "gl_bindings.rs";
 const SDL2_HEADER: &str = "src/utils/bindings/sdl2_header.h";
 const SDL2_BINDINGS_FILE: &str = "sdl2_bindings.rs";
-const AIMBOT_TRAMPOLINE_OUT: &str = "src/hacks/aim/bot_trampoline.cpp";
 
 fn main() {
     // tell rustc to link libGL
@@ -39,6 +38,7 @@ fn main() {
     let bindings = bindgen::Builder::default()
         .header(SDL2_HEADER)
         .allowlist_type("SDL_Window")
+        .allowlist_type("SDL_Scancode")
         .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
         .generate()
         .expect("failed to generate SDL2 bindings");
@@ -48,11 +48,4 @@ fn main() {
     bindings
         .write_to_file(out_path.join(SDL2_BINDINGS_FILE))
         .expect("failed to write SDL2 bindings");
-
-    // compile aimbot cpp trampoline
-    println!("cargo:rerun-if-changed={}", AIMBOT_TRAMPOLINE_OUT);
-    cc::Build::new()
-        .cpp(true)
-        .file(AIMBOT_TRAMPOLINE_OUT)
-        .compile("bot_trampoline");
 }

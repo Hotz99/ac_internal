@@ -1,5 +1,5 @@
-mod mem_data;
-use self::mem_data::MemData;
+mod memdata;
+use self::memdata::MemData;
 
 use crate::process;
 
@@ -28,7 +28,7 @@ impl ProcMem {
         ProcMem { handle: memhandle }
     }
 
-    pub fn write<T: mem_data::MemData>(&mut self, addr: usize, data: T) {
+    pub fn write<T: memdata::MemData>(&mut self, addr: usize, data: T) {
         self.handle
             .seek(SeekFrom::Start(addr as u64))
             .expect("failed to seek /proc/self/mem file");
@@ -38,7 +38,7 @@ impl ProcMem {
             .expect("failed write to /proc/self/mem file");
     }
 
-    pub fn read<T: mem_data::MemData + Copy>(&mut self, addr: usize) -> T {
+    pub fn read<T: memdata::MemData + Copy>(&mut self, addr: usize) -> T {
         self.handle
             .seek(SeekFrom::Start(addr as u64))
             .expect("failed to seek /proc/self/mem file");
@@ -101,12 +101,12 @@ impl ProcMem {
 pub struct InternalMemory {}
 
 impl InternalMemory {
-    pub fn write<T: mem_data::MemData>(addr: usize, data: T) {
+    pub fn write<T: memdata::MemData>(addr: usize, data: T) {
         let ptr: *mut T = addr as *mut T;
         unsafe { *ptr = data };
     }
 
-    pub fn read<T: mem_data::MemData + Copy>(addr: usize) -> T {
+    pub fn read<T: memdata::MemData + Copy>(addr: usize) -> T {
         let ptr: *const T = addr as *const T;
         let ret: T = unsafe { *ptr };
         ret
